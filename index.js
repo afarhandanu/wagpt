@@ -1,4 +1,5 @@
 const { makeWASocket, useMultiFileAuthState, DisconnectReason } = require("@whiskeysockets/baileys");
+const qrcode = require("qrcode-terminal");
 const { OpenAI } = require("openai");
 const P = require("pino");
 require("dotenv").config();
@@ -9,63 +10,63 @@ async function connectBot() {
   const { state, saveCreds } = await useMultiFileAuthState('auth');
   const sock = makeWASocket({
     auth: state,
-    printQRInTerminal: true,
     logger: P({ level: 'silent' })
   });
 
   sock.ev.on('creds.update', saveCreds);
 
+  sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
+    if (qr) {
+      qrcode.generate(qr, { small: true });
+    }
+
+    if (connection === 'close') {
+      const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+      if (shouldReconnect) {
+        connectBot();
+      }
+    }
+  });
+
   sock.ev.on('messages.upsert', async ({ messages }) => {
     const msg = messages[0];
     if (!msg.message || msg.key.fromMe) return;
 
-    const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
     const sender = msg.key.remoteJid;
+    const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
+    const lowered = text?.toLowerCase();
 
     if (!text) return;
 
-    const lowered = text.toLowerCase();
+    if (lowered === "/menu") {
+      return await sock.sendMessage(sender, {
+        text: `📋 *Menu Bot GPT-4o*
 
-    // === Auto-reply untuk pesan tertentu ===
+- Kirim pesan apa saja untuk dijawab AI
+- /menu untuk lihat menu ini
+- halo, siapa kamu → respon khusus`
+      });
+    }
+
     if (lowered === "halo") {
       return await sock.sendMessage(sender, { text: "Hai juga! Ada yang bisa kubantu?" });
     }
 
     if (lowered.includes("siapa kamu")) {
-      return await sock.sendMessage(sender, { text: "Aku adalah chatbot WhatsApp berbasis GPT-4o 🤖" });
+      return await sock.sendMessage(sender, {
+        text: "Aku adalah chatbot WhatsApp berbasis GPT-4o. Tanyakan apa saja!"
+      });
     }
 
-    // === Respon untuk perintah /menu ===
-    if (lowered === "/menu") {
-      const menu = `📋 *Menu Utama*:
-1. Ketik apa pun untuk tanya GPT-4o
-2. /menu - Tampilkan menu ini
-3. halo - Balasan khusus
-4. siapa kamu - Info tentang bot ini
-
-Silakan tanya apa pun!`;
-      return await sock.sendMessage(sender, { text: menu });
-    }
-
-    // === Kirim ke GPT-4o jika tidak ada keyword khusus ===
     try {
-      const response = await openai.chat.completions.create({
+      const completion = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [{ role: "user", content: text }]
       });
-
-      const reply = response.choices[0].message.content;
+      const reply = completion.choices[0].message.content;
       await sock.sendMessage(sender, { text: reply });
     } catch (err) {
-      await sock.sendMessage(sender, { text: "Gagal menjawab: " + err.message });
-    }
-  });
-
-  sock.ev.on('connection.update', ({ connection, lastDisconnect }) => {
-    if (connection === 'close') {
-      if ((lastDisconnect.error)?.output?.statusCode !== DisconnectReason.loggedOut) {
-        connectBot();
-      }
+      await sock.sendMessage(sender, { text: "Maaf, terjadi kesalahan saat menjawab." });
     }
   });
 }

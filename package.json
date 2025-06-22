@@ -1,5 +1,5 @@
 {
-  "name": "wa-gpt4o-bot",
+  "name": "wagpt",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -7,8 +7,9 @@
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.5.0",
-    "openai": "^4.26.0",
     "dotenv": "^16.3.1",
-    "pino": "^8.14.0"
+    "openai": "^4.26.0",
+    "pino": "^8.14.0",
+    "qrcode-terminal": "^0.12.0"
   }
 }
